@@ -1,0 +1,88 @@
+name: Optional IIT integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.26.10", "stable"]
+    env:
+      LD_LIBRARY_PATH: ${{ github.workspace }}/go-diia-iit/iit/euscp/lib
+      DIIA_IIT_FIXTURES_DIR: ${{ github.workspace }}/go-diia-iit/testdata/official
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: go-diia
+      - uses: actions/checkout@v4
+        with:
+          repository: stremovskyy/go-diia-iit
+          ref: 921ad7a0b5d9ba12cae9f50d13389e3c5f9c10ed
+          path: go-diia-iit
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: false
+      - name: Fetch official IIT archives
+        env:
+          IIT_RUNTIME_ARCHIVE_URL: ${{ secrets.IIT_RUNTIME_ARCHIVE_URL }}
+          IIT_FIXTURES_ARCHIVE_URL: ${{ secrets.IIT_FIXTURES_ARCHIVE_URL }}
+        run: |
+          for name in IIT_RUNTIME_ARCHIVE_URL IIT_FIXTURES_ARCHIVE_URL; do
+            if [ -z "${!name}" ]; then
+              echo "Missing repository secret: ${name}" >&2
+              exit 1
+            fi
+            if [[ "${!name}" != https://* ]]; then
+              echo "Repository secret ${name} must be an HTTPS URL" >&2
+              exit 1
+            fi
+          done
+          install -d -m 700 "${RUNNER_TEMP}/iit-archives"
+          curl --fail --location --silent --show-error \
+            --proto '=https' --proto-redir '=https' \
+            --output "${RUNNER_TEMP}/iit-archives/runtime.zip" \
+            "${IIT_RUNTIME_ARCHIVE_URL}"
+          curl --fail --location --silent --show-error \
+            --proto '=https' --proto-redir '=https' \
+            --output "${RUNNER_TEMP}/iit-archives/fixtures.zip" \
+            "${IIT_FIXTURES_ARCHIVE_URL}"
+      - name: Install authenticated IIT runtime
+        working-directory: go-diia-iit
+        run: GOWORK=off go run ./cmd/setup-iit --archive "${RUNNER_TEMP}/iit-archives/runtime.zip" --goos linux --goarch amd64
+      - name: Install authenticated official fixtures
+        working-directory: go-diia-iit
+        run: GOWORK=off go run ./cmd/setup-fixtures --archive "${RUNNER_TEMP}/iit-archives/fixtures.zip"
+      - name: Create local workspace
+        run: go work init ./go-diia ./go-diia/iit ./go-diia-iit ./go-diia-iit/iit/euscp
+      - name: Check optional module consistency
+        working-directory: go-diia/iit
+        run: |
+          cp go.mod "${RUNNER_TEMP}/facade.mod"
+          go mod edit -modfile="${RUNNER_TEMP}/facade.mod" \
+            "-replace=github.com/stremovskyy/go-diia=${GITHUB_WORKSPACE}/go-diia" \
+            "-replace=github.com/stremovskyy/go-diia-iit=${GITHUB_WORKSPACE}/go-diia-iit" \
+            "-replace=iit/euscp=${GITHUB_WORKSPACE}/go-diia-iit/iit/euscp"
+          GOWORK=off go mod tidy -modfile="${RUNNER_TEMP}/facade.mod"
+          go mod edit -modfile="${RUNNER_TEMP}/facade.mod" \
+            -dropreplace=github.com/stremovskyy/go-diia \
+            -dropreplace=github.com/stremovskyy/go-diia-iit \
+            -dropreplace=iit/euscp
+          diff -u go.mod "${RUNNER_TEMP}/facade.mod"
+      - name: Test optional module
+        working-directory: go-diia/iit
+        run: |
+          go vet ./...
+          go test ./...
+          go test -race ./...
+          go test -tags=iit_integration ./...
+          go build -o "${RUNNER_TEMP}/diia-iit-callback" ./examples/callback
+      - name: Scan optional module vulnerabilities
+        working-directory: go-diia/iit
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...

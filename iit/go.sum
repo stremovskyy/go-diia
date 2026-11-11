@@ -1,0 +1,8 @@
+github.com/stremovskyy/go-diia v0.1.0 h1:KfUWTq9lR1hHhdc9VRzupKTxWCqiZoGl8d4yTAvEaeU=
+github.com/stremovskyy/go-diia v0.1.0/go.mod h1:ujbBZmLWFvrx4UIVBfIWCfrgmFYwKnk14xJ6NudWWWk=
+github.com/stremovskyy/go-diia-iit v0.1.0 h1:wUfjqEKh2dcQkFQAxk/P4eEsWNcvOHeD0+xx/Iqc7nQ=
+github.com/stremovskyy/go-diia-iit v0.1.0/go.mod h1:Eqqm6J/q6nm9P9nb8s6BXVYW1OdL7xkmmdQhfUX95ag=
+go.foxforensics.dev/go-zip v0.6.2 h1:oOJOdcEnkL7OHLrnRJA45yJjeYGWBKhU7EX7b6Yu3SY=
+go.foxforensics.dev/go-zip v0.6.2/go.mod h1:lciPKpFtI7fYu5UateHiUC/p2D/W57LzCCR18VwdvMk=
+golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2 h1:zGDaB+/Mus2mScKvZ23k+W9NAUbP56sNM9SptgvWI5A=
+golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2/go.mod h1:Xh+kl5A+M0gMiWDytH2Hhr5Z7WbNCpv/eB/EFgfSk+w=

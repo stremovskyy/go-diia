@@ -1,0 +1,36 @@
+{
+  "requestId": "sanitized-request-2026",
+  "offerRequestId": "sanitized-offer-2026",
+  "barcode": "1234567890123",
+  "errorDocuments": ["future-document", 7, null],
+  "data": {
+    "internal-passport": {"docNumber":"ID000001","registration":{"region":"Example region","registration_date":"2026-01-01"}},
+    "foreign-passport": [{"docNumber":"FP000001","countryCode":"UKR"}],
+    "taxpayer-card": {"docNumber":"0000000001","creationDate":"2026-01-02"},
+    "reference-internally-displaced-person": {"docNumber":"IDP0001","address":{"registration":"Example registration","actual":"Example actual"}},
+    "user-birth-record": {"document":{"number":"BR0001"},"child":{"firstName":"Example","rnokpp":"0000000001"},"parents":{"mother":{"fullName":"Example Parent"}}},
+    "birth-certificate": [{"document":{"number":"BC0001"},"act":{"number":"ACT0001"}}],
+    "child-taxpayer-card": {"docNumber":"0000000002","docStatus":1,"child":{"firstName":"Child","itn":"0000000002"}},
+    "driver-license": {"ua":{"documentNumber":{"code":"4a","name":"Номер","value":"DL0001"},"categories":[{"category":{"value":"B"}}]}},
+    "vehicle-license": {"ua":{"licensePlate":{"value":"AA0000AA"},"vin":{"value":"SANITIZEDVIN00001"},"powerKWT":{"value":"100"}}},
+    "student-id-card": {"docNumber":"ST0001","collegeName":"Example University"},
+    "residence-permit-permanent": {"docNumber":"RP0001","nationality":["Example"]},
+    "residence-permit-temporary": {"docNumber":"RT0001","registration":"Example city"},
+    "pension-card": {"docNumber":"PC0001","pensionType":"Example pension"},
+    "education-document": [
+      {"docNumber":"ED0001","subType":"diplomaOfBachelor","issueDate":"2026-01-01"},
+      {"docNumber":"ED0002","subType":"attestationOfCompleteGeneralSecondaryEducation","specialityName":"Example speciality"},
+      {"docNumber":"ED0003","subType":"certificateOfBasicGeneralSecondaryEducation","qualificationName":"Example qualification"},
+      {"docNumber":"ED0004","subType":"diplomaOfJuniorSpecialist","studyProgramName":"Example program"}
+    ],
+    "veteran-certificate": {"docNumber":"VC0001","lawArticle":"Example article"},
+    "name-change-act-record": {"docNumber":"NC0001","docStatus":"1","firstName":"Example","oldLastName":"Previous","certificates":[{"number":"CERT0001"}]},
+    "marriage-act-record": {"docNumber":"MA0001","partnerFirst":{"firstName":"First"},"partnerSecond":{"firstName":"Second"}},
+    "divorce-act-record": {"docNumber":"DA0001","reasonDivorce":"Example reason","partnerFirst":{"firstName":"First"}},
+    "income-report": {"Info":{"RNOKPP":"0000000001","SourcesOfIncome":[{"IncomeTaxMilitary":{"IncomeAccrued":100.50,"IncomePaid":"90.00"}}]},"period":{"period_begin_month":1,"period_begin_year":"2025","period_end_month":12,"period_end_year":2025}},
+    "ok5": {"lastName":"Example","insuredData":[{"edrpo":"00000000","year":"2025","monthlyData":[{"sum1":100,"sum2":"200","monthExp":"1"}]}]},
+    "ok7": [{"lastName":"Example","insuredData":[{"edrpo":"00000000","year":2026,"monthlyData":[{"sum1":"300","monthExp":2}]}]}],
+    "future-document-2027": {"preserved":true}
+  },
+  "futureEnvelopeField": {"preserved":true}
+}
