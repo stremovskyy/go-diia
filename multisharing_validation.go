@@ -3,9 +3,10 @@ package go_diia
 // ValidateMultisharingPackage checks that a verified multi-sharing package
 // contains a PDF for every mandatory document type from the pending offer.
 // It also checks the signed metadata's documentTypes and errorDocuments
-// against the PDFs returned by the archive processor. A failed optional type
-// may have no PDF when Diia records it in errorDocuments. Call this after
-// Process and before storing documents or acknowledging the callback.
+// against the PDFs returned by the archive processor. Diia may omit a failed
+// optional type from documentTypes while recording it in errorDocuments. The
+// caller must check every PDF and error type against the pending offer. Call this
+// after Process and before storing documents or acknowledging the callback.
 func ValidateMultisharingPackage(pkg *DocumentPackage, mandatory ...DocumentType) error {
 	if pkg == nil || pkg.Metadata == nil || pkg.MetadataSealFileName == "" || len(pkg.RawMetadata) == 0 ||
 		len(pkg.Documents) == 0 {
@@ -46,9 +47,17 @@ func ValidateMultisharingPackage(pkg *DocumentPackage, mandatory ...DocumentType
 	failed := make(map[DocumentType]bool, len(pkg.Metadata.ErrorDocumentDetails))
 
 	for _, document := range pkg.Metadata.ErrorDocumentDetails {
-		if !document.DocumentType.Valid() || !declared[document.DocumentType] ||
-			(document.Result != 412 && document.Result != 404 && document.Result != 500) {
-			return callbackError("multi-sharing metadata has an invalid document error", nil)
+		if !document.DocumentType.Valid() {
+			return callbackError("multi-sharing metadata has an unsupported document error type", nil)
+		}
+		if actual[document.DocumentType] {
+			return callbackError("multi-sharing metadata document error conflicts with PDF", nil)
+		}
+		if failed[document.DocumentType] {
+			return callbackError("multi-sharing metadata has duplicate document error type", nil)
+		}
+		if document.Result != 412 && document.Result != 404 && document.Result != 500 {
+			return callbackError("multi-sharing metadata has invalid document error result", nil)
 		}
 
 		failed[document.DocumentType] = true
