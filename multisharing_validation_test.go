@@ -39,16 +39,29 @@ func TestValidateMultisharingPackage(t *testing.T) {
 	}
 
 	for _, test := range []struct {
-		name      string
-		metadata  string
-		documents []DocumentType
-		mandatory []DocumentType
-		wantError bool
+		name        string
+		metadata    string
+		documents   []DocumentType
+		mandatory   []DocumentType
+		wantError   bool
+		wantMessage string
 	}{
 		{
 			name:      "optional document failed",
 			metadata:  `{"documentTypes":["internal-passport","taxpayer-card"],"errorDocuments":[{"documentType":"taxpayer-card","result":404}],"data":{}}`,
 			documents: []DocumentType{DocumentTypeInternalPassport}, mandatory: []DocumentType{DocumentTypeInternalPassport},
+		},
+		{
+			name:      "Diia omits missing optional passport from document types",
+			metadata:  `{"documentTypes":["taxpayer-card","driver-license","vehicle-license"],"errorDocuments":[{"documentType":"internal-passport","result":404}],"data":{}}`,
+			documents: []DocumentType{DocumentTypeTaxpayerCard, DocumentTypeDriverLicense, DocumentTypeVehicleLicense, DocumentTypeVehicleLicense},
+			mandatory: []DocumentType{DocumentTypeTaxpayerCard, DocumentTypeDriverLicense},
+		},
+		{
+			name:      "missing passport is mandatory despite typed error",
+			metadata:  `{"documentTypes":["taxpayer-card","driver-license","vehicle-license"],"errorDocuments":[{"documentType":"internal-passport","result":404}],"data":{}}`,
+			documents: []DocumentType{DocumentTypeTaxpayerCard, DocumentTypeDriverLicense, DocumentTypeVehicleLicense},
+			mandatory: []DocumentType{DocumentTypeInternalPassport}, wantError: true,
 		},
 		{
 			name:      "mandatory document failed",
@@ -69,11 +82,30 @@ func TestValidateMultisharingPackage(t *testing.T) {
 			name:      "unknown error result",
 			metadata:  `{"documentTypes":["internal-passport"],"errorDocuments":[{"documentType":"vehicle-license","result":418}],"data":{}}`,
 			documents: []DocumentType{DocumentTypeInternalPassport}, wantError: true,
+			wantMessage: "multi-sharing metadata has invalid document error result",
 		},
 		{
-			name:      "error type absent from manifest",
-			metadata:  `{"documentTypes":["internal-passport"],"errorDocuments":[{"documentType":"vehicle-license","result":404}],"data":{}}`,
+			name:      "unknown error document type",
+			metadata:  `{"documentTypes":["internal-passport"],"errorDocuments":[{"documentType":"future-document","result":404}],"data":{}}`,
 			documents: []DocumentType{DocumentTypeInternalPassport}, wantError: true,
+			wantMessage: "multi-sharing metadata has an unsupported document error type",
+		},
+		{
+			name:      "typed optional error absent from manifest",
+			metadata:  `{"documentTypes":["internal-passport"],"errorDocuments":[{"documentType":"vehicle-license","result":404}],"data":{}}`,
+			documents: []DocumentType{DocumentTypeInternalPassport},
+		},
+		{
+			name:      "error conflicts with PDF",
+			metadata:  `{"documentTypes":["internal-passport","taxpayer-card"],"errorDocuments":[{"documentType":"internal-passport","result":404}],"data":{}}`,
+			documents: []DocumentType{DocumentTypeInternalPassport, DocumentTypeTaxpayerCard}, wantError: true,
+			wantMessage: "multi-sharing metadata document error conflicts with PDF",
+		},
+		{
+			name:      "duplicate typed errors",
+			metadata:  `{"documentTypes":["taxpayer-card"],"errorDocuments":[{"documentType":"internal-passport","result":404},{"documentType":"internal-passport","result":404}],"data":{}}`,
+			documents: []DocumentType{DocumentTypeTaxpayerCard}, wantError: true,
+			wantMessage: "multi-sharing metadata has duplicate document error type",
 		},
 		{
 			name:      "legacy error string",
@@ -96,6 +128,9 @@ func TestValidateMultisharingPackage(t *testing.T) {
 
 			if !test.wantError && err != nil {
 				t.Fatalf("valid package rejected: %v", err)
+			}
+			if test.wantMessage != "" && (err == nil || err.Error() != ErrCallback.Error()+": "+test.wantMessage) {
+				t.Fatalf("wrong fixed validation reason: got %v, want %q", err, test.wantMessage)
 			}
 		})
 	}
