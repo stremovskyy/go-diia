@@ -9,7 +9,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 func TestRelayForwardsRawCallback(t *testing.T) {
 	const boundary = "sandbox-boundary"
@@ -57,6 +64,41 @@ func TestRelayForwardsRawCallback(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Body.String() != `{"success":true}` || calls.Load() != 1 {
 		t.Fatalf("callback result: status=%d body=%q upstream_calls=%d", response.Code, response.Body.String(), calls.Load())
+	}
+}
+
+func TestRelayForwardsToWormholeTarget(t *testing.T) {
+	target, err := parseTargetURL("https://" + wormholeHost + wormholePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const body = "--diia-boundary\r\nContent-Disposition: form-data; name=\"encodeData\"\r\n\r\nraw\r\n--diia-boundary--\r\n"
+	var calls atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		if request.Method != http.MethodPost ||
+			request.URL.String() != "https://"+wormholeHost+wormholePath+"?source=diia" ||
+			request.Header.Get("Authorization") != "Bearer test-token" ||
+			request.Header.Get("X-Document-Request-Trace-Id") != "test-request" ||
+			request.Header.Get("Content-Type") != "multipart/form-data; boundary=diia-boundary" {
+			t.Errorf("unexpected Wormhole request: method=%s url=%s", request.Method, request.URL)
+		}
+		forwarded, err := io.ReadAll(request.Body)
+		if err != nil || string(forwarded) != body {
+			t.Error("Wormhole request body changed")
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}, nil
+	}), CheckRedirect: noRedirect}
+
+	request := httptest.NewRequest(http.MethodPost, "https://ms.utaxcloud.net"+callbackPath+"?source=diia", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer test-token")
+	request.Header.Set("X-Document-Request-Trace-Id", "test-request")
+	request.Header.Set("Content-Type", "multipart/form-data; boundary=diia-boundary")
+	response := httptest.NewRecorder()
+	routes(&relay{target: target, client: client, wait: targetWait(target)}).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Body.String() != `{"success":true}` || calls.Load() != 1 {
+		t.Fatalf("Wormhole callback result: status=%d body=%q upstream_calls=%d", response.Code, response.Body.String(), calls.Load())
 	}
 }
 
@@ -144,10 +186,18 @@ func TestRelayDoesNotFollowUpstreamRedirect(t *testing.T) {
 	}
 }
 
-func TestWebhookURLValidation(t *testing.T) {
-	const valid = "https://webhook.site/00000000-0000-4000-8000-000000000001"
-	if _, err := parseWebhookURL(valid); err != nil {
-		t.Fatal(err)
+func TestTargetURLValidation(t *testing.T) {
+	for _, test := range []struct {
+		url  string
+		wait time.Duration
+	}{
+		{"https://webhook.site/00000000-0000-4000-8000-000000000001", webhookMaxWait},
+		{"https://" + wormholeHost + wormholePath, wormholeMaxWait},
+	} {
+		target, err := parseTargetURL(test.url)
+		if err != nil || targetWait(target) != test.wait {
+			t.Errorf("rejected allowed callback target %q: %v", test.url, err)
+		}
 	}
 	for _, raw := range []string{
 		"http://webhook.site/00000000-0000-4000-8000-000000000001",
@@ -155,9 +205,20 @@ func TestWebhookURLValidation(t *testing.T) {
 		"https://user:password@webhook.site/00000000-0000-4000-8000-000000000001",
 		"https://webhook.site/other",
 		"https://webhook.site/00000000-0000-4000-8000-000000000001?copy=1",
+		"http://" + wormholeHost + wormholePath,
+		"https://" + wormholeHost + ".evil.example" + wormholePath,
+		"https://user:password@" + wormholeHost + wormholePath,
+		"https://" + wormholeHost + ":8080" + wormholePath,
+		"https://" + wormholeHost + "/diia/callback/",
+		"https://" + wormholeHost + "/diia/%63allback",
+		"https://" + wormholeHost + wormholePath + "?copy=1",
+		"https://" + wormholeHost + wormholePath + "?",
+		"https://" + wormholeHost + wormholePath + "#fragment",
+		"https://" + wormholeHost + wormholePath + "#",
+		"https://127.0.0.1" + wormholePath,
 	} {
-		if _, err := parseWebhookURL(raw); err == nil {
-			t.Errorf("accepted invalid webhook URL")
+		if _, err := parseTargetURL(raw); err == nil {
+			t.Errorf("accepted invalid callback URL %q", raw)
 		}
 	}
 }

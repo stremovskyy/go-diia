@@ -1,4 +1,4 @@
-// Command diia-callback-relay forwards sandbox Diia callbacks to Webhook.site.
+// Command diia-callback-relay forwards sandbox Diia callbacks to an allowed HTTPS target.
 package main
 
 import (
@@ -16,8 +16,11 @@ import (
 )
 
 const (
-	callbackPath = "/diia/documents-receiver"
-	maxWait      = 25 * time.Second
+	callbackPath    = "/diia/documents-receiver"
+	wormholeHost    = "wormhole.dev-miranda.megakit.pro"
+	wormholePath    = "/diia/callback"
+	webhookMaxWait  = 25 * time.Second
+	wormholeMaxWait = 180 * time.Second
 )
 
 var webhookTokenPattern = regexp.MustCompile(`^/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -25,20 +28,22 @@ var webhookTokenPattern = regexp.MustCompile(`^/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0
 type relay struct {
 	target *url.URL
 	client *http.Client
+	wait   time.Duration
 }
 
 func main() {
-	target, err := parseWebhookURL(os.Getenv("WEBHOOK_URL"))
+	target, err := parseTargetURL(os.Getenv("WEBHOOK_URL"))
 	if err != nil {
-		log.Fatal("WEBHOOK_URL must be an HTTPS webhook.site token URL")
+		log.Fatal("WEBHOOK_URL must be an allowed HTTPS callback URL")
 	}
+	wait := targetWait(target)
 
 	server := &http.Server{
 		Addr:              ":8080",
-		Handler:           routes(&relay{target: target, client: &http.Client{Timeout: maxWait, CheckRedirect: noRedirect}}),
+		Handler:           routes(&relay{target: target, client: &http.Client{Timeout: wait, CheckRedirect: noRedirect}, wait: wait}),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		ReadTimeout:       wait + 5*time.Second,
+		WriteTimeout:      wait + 5*time.Second,
 		IdleTimeout:       time.Minute,
 	}
 
@@ -50,15 +55,35 @@ func noRedirect(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-func parseWebhookURL(raw string) (*url.URL, error) {
+func parseTargetURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
-	if err != nil || u == nil || u.Scheme != "https" || u.Hostname() != "webhook.site" ||
-		(u.Port() != "" && u.Port() != "443") || u.User != nil || u.Fragment != "" ||
-		u.RawQuery != "" || !webhookTokenPattern.MatchString(u.Path) {
-		return nil, errors.New("invalid webhook URL")
+	if err != nil || u == nil || u.Scheme != "https" ||
+		(u.Port() != "" && u.Port() != "443") || u.User != nil || strings.Contains(raw, "#") ||
+		u.RawQuery != "" || u.ForceQuery || u.RawPath != "" {
+		return nil, errors.New("invalid callback URL")
+	}
+
+	switch u.Hostname() {
+	case "webhook.site":
+		if !webhookTokenPattern.MatchString(u.Path) {
+			return nil, errors.New("invalid callback URL")
+		}
+	case wormholeHost:
+		if u.Path != wormholePath {
+			return nil, errors.New("invalid callback URL")
+		}
+	default:
+		return nil, errors.New("invalid callback URL")
 	}
 
 	return u, nil
+}
+
+func targetWait(target *url.URL) time.Duration {
+	if target.Hostname() == wormholeHost {
+		return wormholeMaxWait
+	}
+	return webhookMaxWait
 }
 
 func routes(r *relay) http.Handler {
@@ -82,7 +107,11 @@ func (r *relay) forward(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(request.Context(), maxWait)
+	wait := r.wait
+	if wait == 0 {
+		wait = webhookMaxWait
+	}
+	ctx, cancel := context.WithTimeout(request.Context(), wait)
 	defer cancel()
 
 	target := *r.target
